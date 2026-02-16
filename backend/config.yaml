@@ -1,0 +1,36 @@
+server:
+  port: 8080
+  mode: debug  # debug, release, test
+
+database:
+  host: localhost
+  port: 3306
+  name: plm
+  user: root
+  password: plm123456
+  max_open_conns: 100
+  max_idle_conns: 10
+  conn_max_lifetime: 1h
+  conn_max_idle_time: 10m
+
+redis:
+  host: localhost
+  port: 6380  # 避免与dify的6379冲突
+  password: ""
+  db: 0
+
+storage:
+  type: minio
+  endpoint: localhost:9000
+  access_key: minioadmin
+  secret_key: minioadmin
+  use_ssl: false
+  bucket: plm-documents
+
+jwt:
+  secret: plm-jwt-secret-key-change-in-production
+  expire: 168h  # 7 days
+
+log:
+  level: debug  # debug, info, warn, error
+  format: json  # json, console
