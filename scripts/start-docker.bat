@@ -34,7 +34,7 @@ docker compose ps
 echo.
 echo 服务地址:
 echo   - MySQL:    localhost:3306  (用户: root, 密码: plm123456)
-echo   - Redis:    localhost:6379
+echo   - Redis:    localhost:6380
 echo   - MinIO:    localhost:9000 (API) / localhost:9001 (Console)
 echo              (用户: minioadmin, 密码: minioadmin)
 echo.
