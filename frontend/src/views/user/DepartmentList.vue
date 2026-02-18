@@ -134,14 +134,20 @@ function buildTree(items: Department[]): any[] {
   const map = new Map<number, any>()
   const roots: any[] = []
 
+  // 先创建所有节点
   items.forEach((item) => {
-    map.set(item.id, { ...item, children: [] })
+    map.set(item.id, { ...item })
   })
 
+  // 构建树形结构
   items.forEach((item) => {
     const node = map.get(item.id)
     if (item.parent_id && map.has(item.parent_id)) {
-      map.get(item.parent_id).children.push(node)
+      const parent = map.get(item.parent_id)
+      if (!parent.children) {
+        parent.children = []
+      }
+      parent.children.push(node)
     } else {
       roots.push(node)
     }
@@ -160,6 +166,10 @@ async function fetchOrganizations() {
     const res = await getOrganizationList()
     if (res.code === 0) {
       organizations.value = res.data
+      // 默认选择第一个组织
+      if (organizations.value.length > 0 && !selectedOrgId.value) {
+        selectedOrgId.value = String(organizations.value[0].id)
+      }
     }
   } catch (error) {
     console.error(error)
@@ -171,7 +181,8 @@ async function fetchData() {
   try {
     const res = await getDepartmentList(selectedOrgId.value ? String(selectedOrgId.value) : undefined)
     if (res.code === 0) {
-      tableData.value = res.data
+      // 构建树形结构数据
+      tableData.value = buildTree(res.data)
     }
   } catch (error) {
     console.error(error)

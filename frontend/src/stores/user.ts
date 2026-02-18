@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { User, Role, Permission } from '@/types/api'
-import { login as loginApi, getUser } from '@/api/user'
+import { login as loginApi, getUser, getCurrentUser } from '@/api/user'
 
 export const useUserStore = defineStore('user', () => {
   // 状态
@@ -59,6 +59,33 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  // 初始化用户状态（页面刷新时调用，从token恢复用户信息和权限）
+  async function initUser() {
+    if (!token.value) return false
+
+    try {
+      const res = await getCurrentUser()
+      console.log('getCurrentUser response:', res)
+      if (res.code === 0) {
+        userInfo.value = res.data
+        // 从用户信息中提取角色和权限
+        if (res.data.roles) {
+          roles.value = res.data.roles
+          permissions.value = res.data.roles
+            .flatMap(role => role.permissions || [])
+            .map((p: Permission) => p.code)
+        }
+        return true
+      }
+      console.log('initUser failed: code !== 0')
+      return false
+    } catch (error) {
+      console.error('initUser error:', error)
+      logout()
+      return false
+    }
+  }
+
   // 检查权限
   function hasPermission(permission: string): boolean {
     return permissions.value.includes(permission) || permissions.value.includes('admin:all')
@@ -80,6 +107,7 @@ export const useUserStore = defineStore('user', () => {
     login,
     logout,
     fetchUserInfo,
+    initUser,
     hasPermission,
     hasRole,
   }

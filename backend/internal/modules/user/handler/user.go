@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"plm/internal/core/middleware"
 	"plm/internal/modules/user/model"
 	"plm/internal/modules/user/service"
 	"plm/pkg/response"
@@ -73,6 +74,23 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 	response.Success(c, gin.H{
 		"token": newToken,
 	})
+}
+
+// GetCurrentUser 获取当前登录用户信息
+func (h *Handler) GetCurrentUser(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == 0 {
+		response.Unauthorized(c, "未登录")
+		return
+	}
+
+	user, err := h.svc.GetUser(c, userID)
+	if err != nil {
+		response.NotFound(c, "用户不存在")
+		return
+	}
+
+	response.Success(c, user)
 }
 
 // List 用户列表

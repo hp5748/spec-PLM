@@ -3,6 +3,7 @@ package user
 import (
 	"time"
 
+	"plm/internal/core/middleware"
 	"plm/internal/core/module"
 	"plm/internal/modules/user/handler"
 	"plm/internal/modules/user/repository"
@@ -57,6 +58,10 @@ func (m *Module) Routes(r module.RouterGroup) {
 		auth.POST("/register", m.handler.Register)
 		auth.POST("/refresh", m.handler.RefreshToken)
 	}
+
+	// 认证相关路由（需要登录）
+	authAuthed := r.Group("/auth")
+	authAuthed.GET("/me", middleware.Auth(), m.handler.GetCurrentUser)
 
 	// 用户管理路由（需要登录）
 	users := r.Group("/users")

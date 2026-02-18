@@ -56,11 +56,11 @@ export interface Organization {
 export interface Department {
   id: number
   organization_id: number
-  parent_id: number
+  parent_id: number | null
   name: string
   code: string
   sort_order: number
-  manager_id: number
+  manager_id: number | null
   status: 'active' | 'inactive'
   parent?: Department
   children?: Department[]

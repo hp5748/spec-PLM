@@ -45,15 +45,15 @@
               <el-icon :size="30"><User /></el-icon>
               <span>用户管理</span>
             </div>
-            <div class="quick-item" @click="$router.push('#')">
+            <div class="quick-item" @click="$router.push('/material/list')">
               <el-icon :size="30"><Box /></el-icon>
               <span>物料管理</span>
             </div>
-            <div class="quick-item" @click="$router.push('#')">
+            <div class="quick-item" @click="$router.push('/document/list')">
               <el-icon :size="30"><Document /></el-icon>
               <span>文档管理</span>
             </div>
-            <div class="quick-item" @click="$router.push('#')">
+            <div class="quick-item" @click="$router.push('/bom/list')">
               <el-icon :size="30"><List /></el-icon>
               <span>BOM管理</span>
             </div>

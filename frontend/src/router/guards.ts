@@ -17,6 +17,16 @@ router.beforeEach(async (to, _from, next) => {
       // 已登录，跳转到首页
       next({ path: '/' })
     } else {
+      // 如果有token但没有用户信息，尝试恢复用户状态
+      if (!userStore.userInfo) {
+        const success = await userStore.initUser()
+        if (!success) {
+          // 恢复失败，跳转到登录页
+          next({ path: '/login', query: { redirect: to.fullPath } })
+          return
+        }
+      }
+
       // 检查权限
       if (to.meta.permissions && to.meta.permissions.length > 0) {
         const hasPermission = to.meta.permissions.every(permission =>

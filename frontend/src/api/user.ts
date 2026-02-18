@@ -32,6 +32,11 @@ export function refreshToken(): Promise<ApiResponse<{ token: string }>> {
   return request.post('/user/auth/refresh')
 }
 
+// 获取当前用户信息
+export function getCurrentUser(): Promise<ApiResponse<User>> {
+  return request.get('/user/auth/me')
+}
+
 // 获取用户列表
 export function getUserList(params: PageParams): Promise<ApiResponse<PageData<User>>> {
   return request.get('/user/users', { params })

@@ -114,6 +114,63 @@ CREATE TABLE IF NOT EXISTS role_permissions (
     INDEX idx_permission (permission_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色权限关联表';
 
+-- 物料表
+CREATE TABLE IF NOT EXISTS materials (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    item_id VARCHAR(50) NOT NULL COMMENT '物料编码',
+    item_name VARCHAR(200) NOT NULL COMMENT '物料名称',
+    description TEXT COMMENT '描述',
+    item_type ENUM('PART', 'ASSEMBLY', 'RAW_MATERIAL', 'TOOL') NOT NULL COMMENT '物料类型',
+    version VARCHAR(2) NOT NULL DEFAULT 'AA' COMMENT '版本号',
+    unit VARCHAR(20) COMMENT '计量单位',
+    status ENUM('DRAFT', 'REVIEWING', 'RELEASED', 'REJECTED', 'OBSOLETE') DEFAULT 'DRAFT' COMMENT '状态',
+    attributes JSON COMMENT '主属性JSON',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by BIGINT NOT NULL DEFAULT 0,
+    deleted_at TIMESTAMP NULL,
+    UNIQUE KEY uk_item_version (item_id, version),
+    INDEX idx_item_id (item_id),
+    INDEX idx_item_type (item_type),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='物料表';
+
+-- 物料动态属性表
+CREATE TABLE IF NOT EXISTS material_attributes (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    material_id BIGINT NOT NULL COMMENT '物料ID',
+    attr_type VARCHAR(50) NOT NULL COMMENT '属性类型',
+    attr_key VARCHAR(100) NOT NULL COMMENT '属性键',
+    attr_value TEXT COMMENT '属性值',
+    unit VARCHAR(20) COMMENT '单位',
+    sort_order INT DEFAULT 0 COMMENT '排序',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_material (material_id),
+    INDEX idx_material_type (material_id, attr_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='物料动态属性表';
+
+-- 文档表
+CREATE TABLE IF NOT EXISTS documents (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    doc_id VARCHAR(50) NOT NULL COMMENT '文档编码',
+    doc_name VARCHAR(200) NOT NULL COMMENT '文档名称',
+    doc_type VARCHAR(50) NOT NULL COMMENT '文档类型',
+    file_path VARCHAR(500) NOT NULL COMMENT '文件存储路径',
+    file_name VARCHAR(255) COMMENT '原始文件名',
+    file_size BIGINT COMMENT '文件大小（字节）',
+    mime_type VARCHAR(100) COMMENT 'MIME类型',
+    version VARCHAR(2) NOT NULL DEFAULT 'AA' COMMENT '版本号',
+    status ENUM('DRAFT', 'CHECKED_IN', 'RELEASED') DEFAULT 'DRAFT' COMMENT '状态',
+    attributes JSON COMMENT '扩展属性JSON',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by BIGINT NOT NULL DEFAULT 0,
+    deleted_at TIMESTAMP NULL,
+    UNIQUE KEY uk_doc_version (doc_id, version),
+    INDEX idx_doc_id (doc_id),
+    INDEX idx_doc_type (doc_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文档表';
+
 -- 初始化系统角色
 INSERT INTO roles (name, code, description, is_system, created_by) VALUES
 ('系统管理员', 'ADMIN', '系统配置、用户管理、全部数据访问', TRUE, 0),
@@ -191,3 +248,93 @@ INSERT INTO role_permissions (role_id, permission_id)
 SELECT 4, id FROM permissions WHERE code IN (
     'material:view', 'document:view', 'bom:view', 'workflow:view'
 );
+
+-- 版本历史表
+CREATE TABLE IF NOT EXISTS version_histories (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    entity_type VARCHAR(50) NOT NULL COMMENT '实体类型(MATERIAL/DOCUMENT)',
+    entity_id BIGINT NOT NULL COMMENT '实体ID',
+    old_version VARCHAR(2) COMMENT '原版本',
+    new_version VARCHAR(2) NOT NULL COMMENT '新版本',
+    change_reason TEXT COMMENT '变更原因',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by BIGINT NOT NULL,
+    INDEX idx_entity (entity_type, entity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='版本历史表';
+
+-- BOM视图表
+CREATE TABLE IF NOT EXISTS bom_views (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(200) NOT NULL COMMENT 'BOM视图名称',
+    root_material_id BIGINT NOT NULL COMMENT '根物料ID',
+    root_version VARCHAR(2) COMMENT '根物料版本(精确BOM必填)',
+    is_exact BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否精确BOM',
+    status ENUM('DRAFT', 'REVIEWING', 'RELEASED', 'REJECTED', 'OBSOLETE') DEFAULT 'DRAFT' COMMENT '状态',
+    description TEXT COMMENT '描述',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by BIGINT NOT NULL DEFAULT 0,
+    deleted_at TIMESTAMP NULL,
+    UNIQUE KEY uk_root_material (root_material_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='BOM视图表';
+
+-- BOM关系表
+CREATE TABLE IF NOT EXISTS bom_items (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    bom_view_id BIGINT NOT NULL COMMENT 'BOM视图ID',
+    parent_id BIGINT COMMENT '父节点ID(为空则为根节点)',
+    material_id BIGINT NOT NULL COMMENT '物料ID',
+    version VARCHAR(2) COMMENT '物料版本(精确BOM必填)',
+    quantity DECIMAL(10,4) NOT NULL DEFAULT 1 COMMENT '数量',
+    sort_order INT DEFAULT 0 COMMENT '排序',
+    level INT DEFAULT 1 COMMENT '层级',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_bom_view (bom_view_id),
+    INDEX idx_parent (parent_id),
+    INDEX idx_material (material_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='BOM关系表';
+
+-- 属性Schema表
+CREATE TABLE IF NOT EXISTS attribute_schemas (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    entity_type VARCHAR(50) NOT NULL COMMENT '实体类型(MATERIAL/DOCUMENT)',
+    type_code VARCHAR(50) NOT NULL COMMENT '类型编码(物料类型或文档类型)',
+    attr_type VARCHAR(50) NOT NULL COMMENT '属性类型(main/description/specification/custom)',
+    schema_name VARCHAR(100) COMMENT 'Schema名称',
+    schema_config JSON NOT NULL COMMENT 'Schema定义JSON',
+    version VARCHAR(2) NOT NULL DEFAULT 'AA' COMMENT '版本号',
+    status ENUM('DRAFT', 'RELEASED') DEFAULT 'DRAFT' COMMENT '状态',
+    is_active BOOLEAN DEFAULT TRUE COMMENT '是否当前激活版本',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by BIGINT NOT NULL DEFAULT 0,
+    deleted_at TIMESTAMP NULL,
+    INDEX idx_entity_type (entity_type),
+    INDEX idx_type_code (type_code),
+    INDEX idx_attr_type (attr_type),
+    UNIQUE KEY uk_entity_type_version (entity_type, type_code, attr_type, version)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='属性Schema表';
+
+-- 文档动态属性表
+CREATE TABLE IF NOT EXISTS document_attributes (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    document_id BIGINT NOT NULL COMMENT '文档ID',
+    attr_type VARCHAR(50) NOT NULL COMMENT '属性类型',
+    attr_key VARCHAR(100) NOT NULL COMMENT '属性键',
+    attr_value TEXT COMMENT '属性值',
+    unit VARCHAR(20) COMMENT '单位',
+    sort_order INT DEFAULT 0 COMMENT '排序',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_document (document_id),
+    INDEX idx_document_type (document_id, attr_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文档动态属性表';
+
+-- 添加属性配置管理权限
+INSERT INTO permissions (name, code, module, description) VALUES
+('属性配置管理', 'attribute:manage', 'admin', '管理物料/文档属性Schema');
+
+-- 给ADMIN角色添加属性配置权限
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT 1, id FROM permissions WHERE code = 'attribute:manage';

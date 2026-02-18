@@ -8,12 +8,14 @@ import (
 	"plm/internal/core/config"
 	"plm/internal/core/middleware"
 	"plm/internal/core/module"
+	"gorm.io/gorm"
 )
 
 type Server struct {
 	engine   *gin.Engine
 	config   *config.Config
 	registry *module.Registry
+	db       *gorm.DB
 }
 
 func New(cfg *config.Config) *Server {
@@ -38,6 +40,11 @@ func New(cfg *config.Config) *Server {
 	}
 }
 
+// SetDB 设置数据库连接
+func (s *Server) SetDB(db *gorm.DB) {
+	s.db = db
+}
+
 func (s *Server) RegisterModules(registry *module.Registry) {
 	s.registry = registry
 }
@@ -55,7 +62,7 @@ func (s *Server) Run() error {
 
 	// 注册所有模块的路由
 	if s.registry != nil {
-		container := module.NewContainer(nil) // TODO: 注入DB
+		container := module.NewContainer(s.db)
 		// 设置配置
 		container.SetConfig(&module.Config{
 			JWTSecret: s.config.JWT.Secret,

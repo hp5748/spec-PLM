@@ -70,6 +70,68 @@ export const privateRoutes: RouteRecordRaw[] = [
       },
     ],
   },
+  {
+    path: '/admin',
+    component: Layout,
+    redirect: '/admin/attribute-schema',
+    meta: { title: '系统管理', icon: 'Setting', permissions: ['admin:all'] },
+    children: [
+      {
+        path: 'attribute-schema',
+        name: 'AttributeSchema',
+        component: () => import('@/views/admin/AttributeSchemaList.vue'),
+        meta: { title: '属性配置', permissions: ['admin:all'] },
+      },
+    ],
+  },
+  {
+    path: '/material',
+    component: Layout,
+    redirect: '/material/list',
+    meta: { title: '物料管理', icon: 'Box' },
+    children: [
+      {
+        path: 'list',
+        name: 'MaterialList',
+        component: () => import('@/views/material/MaterialList.vue'),
+        meta: { title: '物料列表', permissions: ['material:view'] },
+      },
+    ],
+  },
+  {
+    path: '/document',
+    component: Layout,
+    redirect: '/document/list',
+    meta: { title: '文档管理', icon: 'Document' },
+    children: [
+      {
+        path: 'list',
+        name: 'DocumentList',
+        component: () => import('@/views/document/DocumentList.vue'),
+        meta: { title: '文档列表', permissions: ['document:view'] },
+      },
+    ],
+  },
+  {
+    path: '/bom',
+    component: Layout,
+    redirect: '/bom/list',
+    meta: { title: 'BOM管理', icon: 'Share' },
+    children: [
+      {
+        path: 'list',
+        name: 'BOMList',
+        component: () => import('@/views/bom/BOMList.vue'),
+        meta: { title: 'BOM列表', permissions: ['bom:view'] },
+      },
+      {
+        path: 'edit/:id?',
+        name: 'BOMEdit',
+        component: () => import('@/views/bom/BOMEdit.vue'),
+        meta: { title: 'BOM编辑', permissions: ['bom:edit'] },
+      },
+    ],
+  },
 ]
 
 const router = createRouter({
