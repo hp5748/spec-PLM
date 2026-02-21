@@ -11,7 +11,7 @@
       <!-- 搜索表单 -->
       <el-form :inline="true" :model="searchForm" class="search-form">
         <el-form-item label="实体类型">
-          <el-select v-model="searchForm.entity_type" placeholder="全部" clearable @change="handleSearch">
+          <el-select v-model="searchForm.entity_type" placeholder="请选择实体类型" clearable @change="handleSearch">
             <el-option label="物料" value="MATERIAL" />
             <el-option label="文档" value="DOCUMENT" />
           </el-select>
@@ -20,7 +20,7 @@
           <el-input v-model="searchForm.type_code" placeholder="请输入类型编码" clearable />
         </el-form-item>
         <el-form-item label="属性类型">
-          <el-select v-model="searchForm.attr_type" placeholder="全部" clearable @change="handleSearch">
+          <el-select v-model="searchForm.attr_type" placeholder="请选择属性类型" clearable @change="handleSearch">
             <el-option label="主属性" value="main" />
             <el-option label="描述属性" value="description" />
             <el-option label="规格属性" value="specification" />
@@ -28,7 +28,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="全部" clearable @change="handleSearch">
+          <el-select v-model="searchForm.status" placeholder="请选择状态" clearable @change="handleSearch">
             <el-option label="草稿" value="DRAFT" />
             <el-option label="已发布" value="RELEASED" />
           </el-select>
@@ -203,7 +203,7 @@
                 </el-col>
                 <el-col :span="6">
                   <el-form-item label="类型">
-                    <el-select v-model="field.type" placeholder="类型" style="width: 100%">
+                    <el-select v-model="field.type" placeholder="请选择类型" style="width: 100%">
                       <el-option label="文本" value="text" />
                       <el-option label="数字" value="number" />
                       <el-option label="下拉选择" value="select" />

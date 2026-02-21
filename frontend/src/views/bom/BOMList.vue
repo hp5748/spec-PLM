@@ -62,10 +62,11 @@
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
             <el-button type="primary" link @click="handleViewTree(row)">查看结构</el-button>
+            <el-button type="success" link @click="handleExport(row)">导出</el-button>
             <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -139,6 +140,7 @@ import {
   getBOMList,
   createBOMView,
   deleteBOMView,
+  exportBOM,
   type BOMView,
   type CreateBOMViewRequest
 } from '@/api/bom'
@@ -218,7 +220,7 @@ async function searchMaterials(keyword: string) {
   if (!keyword) return
   materialLoading.value = true
   try {
-    const res = await searchMaterialsApi(keyword, 1, 50)
+    const res = await searchMaterialsApi(keyword, { page: 1, page_size: 50 })
     if (res.code === 0) {
       materialOptions.value = res.data.list
     }
@@ -259,6 +261,12 @@ function handleEdit(row: BOMView) {
 // 查看结构
 function handleViewTree(row: BOMView) {
   router.push(`/bom/edit/${row.id}`)
+}
+
+// 导出BOM
+function handleExport(row: BOMView) {
+  exportBOM(row.id)
+  ElMessage.success('正在导出BOM...')
 }
 
 // 删除

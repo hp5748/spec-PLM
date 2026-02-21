@@ -338,3 +338,62 @@ INSERT INTO permissions (name, code, module, description) VALUES
 -- 给ADMIN角色添加属性配置权限
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT 1, id FROM permissions WHERE code = 'attribute:manage';
+
+-- 流程定义表
+CREATE TABLE IF NOT EXISTS workflow_definitions (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(200) NOT NULL COMMENT '流程名称',
+    code VARCHAR(50) NOT NULL COMMENT '流程编码',
+    type VARCHAR(50) NOT NULL COMMENT '流程类型(MATERIAL_APPROVAL/DOCUMENT_APPROVAL/BOM_APPROVAL)',
+    version VARCHAR(2) NOT NULL DEFAULT 'AA' COMMENT '版本号',
+    config JSON NOT NULL COMMENT '流程配置JSON',
+    status ENUM('DRAFT', 'RELEASED', 'OBSOLETE') DEFAULT 'DRAFT' COMMENT '状态',
+    description TEXT COMMENT '描述',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by BIGINT NOT NULL DEFAULT 0,
+    deleted_at TIMESTAMP NULL,
+    UNIQUE KEY uk_code_version (code, version),
+    INDEX idx_type (type),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程定义表';
+
+-- 流程实例表
+CREATE TABLE IF NOT EXISTS workflow_instances (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    definition_id BIGINT NOT NULL COMMENT '流程定义ID',
+    business_type VARCHAR(50) NOT NULL COMMENT '业务类型(MATERIAL/DOCUMENT/BOM)',
+    business_id BIGINT NOT NULL COMMENT '业务对象ID',
+    title VARCHAR(200) COMMENT '流程标题',
+    status ENUM('DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED') DEFAULT 'DRAFT' COMMENT '状态',
+    initiator_id BIGINT NOT NULL COMMENT '发起人ID',
+    current_node VARCHAR(100) COMMENT '当前节点',
+    comment TEXT COMMENT '发起意见',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL,
+    INDEX idx_definition (definition_id),
+    INDEX idx_business (business_type, business_id),
+    INDEX idx_initiator (initiator_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程实例表';
+
+-- 流程历史表
+CREATE TABLE IF NOT EXISTS workflow_histories (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    instance_id BIGINT NOT NULL COMMENT '流程实例ID',
+    node_name VARCHAR(100) COMMENT '节点名称',
+    action ENUM('SUBMIT', 'APPROVE', 'REJECT', 'TRANSFER', 'CANCEL', 'WITHDRAW') NOT NULL COMMENT '操作类型',
+    operator_id BIGINT NOT NULL COMMENT '操作人ID',
+    operator_name VARCHAR(50) COMMENT '操作人姓名',
+    comment TEXT COMMENT '意见',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_instance (instance_id),
+    INDEX idx_operator (operator_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程历史表';
+
+-- 初始化默认流程定义
+INSERT INTO workflow_definitions (name, code, type, version, config, status, description, created_by) VALUES
+('物料审批流程', 'MATERIAL_APPROVAL', 'MATERIAL_APPROVAL', 'AA', '{"nodes":[{"name":"审批","type":"approval","assignee_type":"role","assignee_value":"REVIEWER"}]}', 'RELEASED', '物料发布审批流程，由审批人员角色进行审批', 1),
+('文档审批流程', 'DOCUMENT_APPROVAL', 'DOCUMENT_APPROVAL', 'AA', '{"nodes":[{"name":"审批","type":"approval","assignee_type":"role","assignee_value":"REVIEWER"}]}', 'RELEASED', '文档发布审批流程，由审批人员角色进行审批', 1),
+('BOM审批流程', 'BOM_APPROVAL', 'BOM_APPROVAL', 'AA', '{"nodes":[{"name":"审批","type":"approval","assignee_type":"role","assignee_value":"REVIEWER"}]}', 'RELEASED', 'BOM发布审批流程，由审批人员角色进行审批', 1);

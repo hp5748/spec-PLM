@@ -15,6 +15,8 @@ import (
 	documentModule "plm/internal/modules/document"
 	documentRepository "plm/internal/modules/document/repository"
 	bomModule "plm/internal/modules/bom"
+	workflowModule "plm/internal/modules/workflow"
+	scriptModule "plm/internal/modules/script"
 	"plm/pkg/database"
 	"plm/pkg/redis"
 	"plm/pkg/storage"
@@ -70,6 +72,8 @@ func main() {
 	registry.Register(documentModule.NewModule(minioStorage))
 	registry.Register(bomModule.NewModule())
 	registry.Register(attributeModule.NewModule())
+	registry.Register(workflowModule.NewModule())
+	registry.Register(scriptModule.NewModule())
 
 	// 创建服务器并注册模块
 	srv := server.New(cfg)

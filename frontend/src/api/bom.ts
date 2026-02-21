@@ -154,16 +154,46 @@ export function convertBOMType(id: number, data: ConvertBOMRequest): Promise<Api
   return request.post(`/bom/boms/${id}/convert`, data)
 }
 
-// 导出BOM
-export function exportBOM(id: number): Promise<ApiResponse<{ download_url: string }>> {
-  return request.get(`/bom/boms/${id}/export`)
+// 导入BOM结果
+export interface ImportBOMResult {
+  success_count: number
+  fail_count: number
+  errors?: string[]
+}
+
+// 导出BOM - 直接下载文件
+export function exportBOM(id: number): void {
+  const token = localStorage.getItem('token')
+  const url = `${import.meta.env.VITE_API_BASE_URL || ''}/api/v1/bom/boms/${id}/export`
+  const link = document.createElement('a')
+  link.href = url + (token ? `?token=${token}` : '')
+  link.download = ''
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
 }
 
 // 导入BOM
-export function importBOM(file: File): Promise<ApiResponse<{ success_count: number; fail_count: number }>> {
+export function importBOM(
+  bomViewId: number,
+  file: File
+): Promise<ApiResponse<ImportBOMResult>> {
   const formData = new FormData()
   formData.append('file', file)
-  return request.post('/bom/import', formData, {
+  formData.append('bom_view_id', String(bomViewId))
+  return request.post('/bom/boms/import', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
+}
+
+// 下载导入模板
+export function downloadBOMTemplate(): void {
+  const token = localStorage.getItem('token')
+  const url = `${import.meta.env.VITE_API_BASE_URL || ''}/api/v1/bom/boms/template`
+  const link = document.createElement('a')
+  link.href = url + (token ? `?token=${token}` : '')
+  link.download = 'BOM_导入模板.xlsx'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
 }

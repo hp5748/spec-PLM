@@ -1,14 +1,17 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 
 	"plm/internal/modules/bom/model"
 	"plm/internal/modules/bom/repository"
 
+	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
 
@@ -504,4 +507,237 @@ func getUnit(m *model.Material) string {
 // SetDB 设置数据库连接（用于事务）
 func (s *Service) SetDB(db *gorm.DB) {
 	s.repo = repository.NewRepository(db)
+}
+
+// ExportBOM 导出BOM为Excel
+func (s *Service) ExportBOM(ctx context.Context, bomViewID uint) (*bytes.Buffer, string, error) {
+	// 获取BOM树形结构
+	tree, err := s.GetBOMTree(ctx, bomViewID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// 创建Excel文件
+	f := excelize.NewFile()
+	defer f.Close()
+
+	sheetName := "BOM结构"
+	// 设置表头
+	headers := []string{"层级", "物料编码", "物料名称", "版本", "数量", "单位", "排序"}
+	for i, header := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheetName, cell, header)
+	}
+
+	// 设置表头样式
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#CCCCCC"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
+	f.SetCellStyle(sheetName, "A1", "G1", headerStyle)
+
+	// 递归写入BOM数据
+	rowNum := 2
+	var writeNode func(node *model.BOMTreeNode, level int)
+	writeNode = func(node *model.BOMTreeNode, level int) {
+		// 写入当前节点
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", rowNum), level)
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", rowNum), node.ItemID)
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", rowNum), node.ItemName)
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", rowNum), node.Version)
+		f.SetCellValue(sheetName, fmt.Sprintf("E%d", rowNum), node.Quantity)
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", rowNum), node.Unit)
+		f.SetCellValue(sheetName, fmt.Sprintf("G%d", rowNum), node.SortOrder)
+		rowNum++
+
+		// 递归写入子节点
+		for _, child := range node.Children {
+			writeNode(&child, level+1)
+		}
+	}
+
+	// 从根节点开始写入
+	writeNode(tree, 0)
+
+	// 设置列宽
+	f.SetColWidth(sheetName, "A", "A", 8)
+	f.SetColWidth(sheetName, "B", "B", 20)
+	f.SetColWidth(sheetName, "C", "C", 30)
+	f.SetColWidth(sheetName, "D", "D", 8)
+	f.SetColWidth(sheetName, "E", "E", 10)
+	f.SetColWidth(sheetName, "F", "F", 10)
+	f.SetColWidth(sheetName, "G", "G", 8)
+
+	// 写入buffer
+	buf := new(bytes.Buffer)
+	if err := f.Write(buf); err != nil {
+		return nil, "", err
+	}
+
+	filename := fmt.Sprintf("BOM_%s.xlsx", tree.ItemID)
+	return buf, filename, nil
+}
+
+// ImportBOM 从Excel导入BOM
+func (s *Service) ImportBOM(ctx context.Context, bomViewID uint, fileData []byte, createdBy uint) (*model.ImportBOMResult, error) {
+	result := &model.ImportBOMResult{}
+
+	// 获取BOM视图
+	bom, err := s.repo.GetBOMViewByID(ctx, bomViewID)
+	if err != nil {
+		return nil, errors.New("BOM视图不存在")
+	}
+
+	// 检查状态是否允许编辑
+	if bom.Status == "RELEASED" {
+		return nil, errors.New("已发布的BOM不能编辑")
+	}
+	if bom.Status == "REVIEWING" {
+		return nil, errors.New("审核中的BOM不能编辑")
+	}
+
+	// 打开Excel文件
+	f, err := excelize.OpenReader(bytes.NewReader(fileData))
+	if err != nil {
+		return nil, fmt.Errorf("无法读取Excel文件: %v", err)
+	}
+	defer f.Close()
+
+	// 获取所有行
+	rows, err := f.GetRows("BOM结构")
+	if err != nil {
+		// 尝试获取第一个工作表
+		sheets := f.GetSheetList()
+		if len(sheets) > 0 {
+			rows, err = f.GetRows(sheets[0])
+			if err != nil {
+				return nil, fmt.Errorf("无法读取Excel数据: %v", err)
+			}
+		} else {
+			return nil, errors.New("Excel文件没有工作表")
+		}
+	}
+
+	// 跳过表头，从第二行开始
+	for i, row := range rows {
+		if i == 0 {
+			continue // 跳过表头
+		}
+		if len(row) < 5 {
+			result.FailCount++
+			result.Errors = append(result.Errors, fmt.Sprintf("第%d行数据不完整", i+1))
+			continue
+		}
+
+		// 解析行数据
+		level := 0
+		if row[0] != "" {
+			level, _ = strconv.Atoi(row[0])
+		}
+		itemID := row[1]
+		itemName := row[2]
+		version := row[3]
+		quantity := 1.0
+		if row[4] != "" {
+			quantity, _ = strconv.ParseFloat(row[4], 64)
+		}
+
+		if itemID == "" {
+			result.FailCount++
+			result.Errors = append(result.Errors, fmt.Sprintf("第%d行物料编码为空", i+1))
+			continue
+		}
+
+		// 查找或创建物料
+		var material *model.Material
+		if s.db != nil {
+			material = &model.Material{}
+			if err := s.db.WithContext(ctx).Where("item_id = ?", itemID).First(material).Error; err != nil {
+				// 物料不存在，创建新物料
+				material = &model.Material{
+					ItemID:   itemID,
+					ItemName: itemName,
+					Version:  version,
+				}
+				if err := s.db.WithContext(ctx).Create(material).Error; err != nil {
+					result.FailCount++
+					result.Errors = append(result.Errors, fmt.Sprintf("第%d行创建物料失败: %v", i+1, err))
+					continue
+				}
+			}
+		}
+
+		// 添加BOM项（只有level > 0的才是子项）
+		if level > 0 && material != nil {
+			req := &model.AddBOMItemRequest{
+				MaterialID: material.ID,
+				Version:    version,
+				Quantity:   quantity,
+			}
+			if _, err := s.AddBOMItem(ctx, bomViewID, req); err != nil {
+				result.FailCount++
+				result.Errors = append(result.Errors, fmt.Sprintf("第%d行添加BOM项失败: %v", i+1, err))
+				continue
+			}
+		}
+
+		result.SuccessCount++
+	}
+
+	return result, nil
+}
+
+// GenerateImportTemplate 生成导入模板
+func (s *Service) GenerateImportTemplate() (*bytes.Buffer, error) {
+	f := excelize.NewFile()
+	defer f.Close()
+
+	sheetName := "BOM结构"
+
+	// 设置表头
+	headers := []string{"层级", "物料编码", "物料名称", "版本", "数量", "单位", "排序"}
+	for i, header := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheetName, cell, header)
+	}
+
+	// 设置表头样式
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#CCCCCC"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
+	f.SetCellStyle(sheetName, "A1", "G1", headerStyle)
+
+	// 添加示例数据
+	exampleData := [][]interface{}{
+		{0, "ROOT-001", "根物料", "AA", 1, "个", 0},
+		{1, "PART-001", "零件1", "AA", 2, "个", 1},
+		{1, "PART-002", "零件2", "AA", 1, "个", 2},
+		{2, "PART-003", "子零件1", "AA", 4, "个", 1},
+	}
+	for i, data := range exampleData {
+		rowNum := i + 2
+		for j, value := range data {
+			cell, _ := excelize.CoordinatesToCellName(j+1, rowNum)
+			f.SetCellValue(sheetName, cell, value)
+		}
+	}
+
+	// 设置列宽
+	f.SetColWidth(sheetName, "A", "A", 8)
+	f.SetColWidth(sheetName, "B", "B", 20)
+	f.SetColWidth(sheetName, "C", "C", 30)
+	f.SetColWidth(sheetName, "D", "D", 8)
+	f.SetColWidth(sheetName, "E", "E", 10)
+	f.SetColWidth(sheetName, "F", "F", 10)
+	f.SetColWidth(sheetName, "G", "G", 8)
+
+	buf := new(bytes.Buffer)
+	if err := f.Write(buf); err != nil {
+		return nil, err
+	}
+
+	return buf, nil
 }

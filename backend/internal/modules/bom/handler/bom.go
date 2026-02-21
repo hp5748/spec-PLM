@@ -236,22 +236,86 @@ func (h *Handler) Export(c *gin.Context) {
 		return
 	}
 
-	// TODO: 实现Excel导出
-	// 暂时返回错误
-	response.Error(c, 50001, "导出功能暂未实现")
-	_ = id
+	buf, filename, err := h.service.ExportBOM(c.Request.Context(), uint(id))
+	if err != nil {
+		response.Error(c, 50001, err.Error())
+		return
+	}
+
+	// 设置响应头
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Expires", "0")
+	c.Header("Cache-Control", "must-revalidate")
+	c.Header("Pragma", "public")
+
+	// 返回文件内容
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
 }
 
 // Import 导入BOM
 func (h *Handler) Import(c *gin.Context) {
-	// TODO: 实现Excel导入
-	response.Error(c, 50001, "导入功能暂未实现")
+	// 获取BOM视图ID
+	bomViewIDStr := c.PostForm("bom_view_id")
+	if bomViewIDStr == "" {
+		response.Error(c, 40001, "缺少bom_view_id参数")
+		return
+	}
+	bomViewID, err := strconv.ParseUint(bomViewIDStr, 10, 64)
+	if err != nil {
+		response.Error(c, 40001, "无效的BOM视图ID")
+		return
+	}
+
+	// 获取上传的文件
+	file, _, err := c.Request.FormFile("file")
+	if err != nil {
+		response.Error(c, 40001, "请上传Excel文件")
+		return
+	}
+	defer file.Close()
+
+	// 读取文件内容
+	fileData := make([]byte, 0)
+	buf := make([]byte, 1024)
+	for {
+		n, err := file.Read(buf)
+		if err != nil {
+			break
+		}
+		fileData = append(fileData, buf[:n]...)
+	}
+
+	userID := c.GetUint("user_id")
+	result, err := h.service.ImportBOM(c.Request.Context(), uint(bomViewID), fileData, userID)
+	if err != nil {
+		response.Error(c, 50001, err.Error())
+		return
+	}
+
+	response.Success(c, result)
 }
 
 // DownloadTemplate 下载导入模板
 func (h *Handler) DownloadTemplate(c *gin.Context) {
-	// TODO: 实现模板下载
-	c.JSON(http.StatusOK, gin.H{
-		"message": "模板下载功能暂未实现",
-	})
+	buf, err := h.service.GenerateImportTemplate()
+	if err != nil {
+		response.Error(c, 50001, "生成模板失败")
+		return
+	}
+
+	// 设置响应头
+	filename := "BOM_导入模板.xlsx"
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Expires", "0")
+	c.Header("Cache-Control", "must-revalidate")
+	c.Header("Pragma", "public")
+
+	// 返回文件内容
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
 }

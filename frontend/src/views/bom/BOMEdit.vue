@@ -9,10 +9,21 @@
           </div>
           <div class="right">
             <el-button type="primary" @click="handleAddItem" :disabled="!canEdit">添加子物料</el-button>
+            <el-upload
+              ref="uploadRef"
+              :show-file-list="false"
+              :before-upload="handleImportBefore"
+              :http-request="handleImport"
+              accept=".xlsx,.xls"
+              :disabled="!canEdit"
+            >
+              <el-button :disabled="!canEdit">导入</el-button>
+            </el-upload>
+            <el-button type="success" @click="handleExport">导出</el-button>
             <el-button @click="handleConvert" :disabled="!canEdit">
               {{ bomInfo?.is_exact ? '转为非精确' : '转为精确' }}
             </el-button>
-            <el-button type="success" @click="handleSave" :loading="saving" :disabled="!canEdit">保存</el-button>
+            <el-button type="primary" @click="handleSave" :loading="saving" :disabled="!canEdit">保存</el-button>
           </div>
         </div>
       </template>
@@ -127,6 +138,8 @@ import {
   updateBOMItem,
   deleteBOMItem,
   convertBOMType,
+  exportBOM,
+  importBOM,
   type BOMView,
   type BOMTreeNode,
   type AddBOMItemRequest,
@@ -149,6 +162,7 @@ const bomId = computed(() => Number(route.params.id))
 const bomInfo = ref<BOMView | null>(null)
 const treeData = ref<BOMTreeNode[]>([])
 const treeRef = ref()
+const uploadRef = ref() // used in template
 const materialOptions = ref<Material[]>([])
 const parentOptions = ref<BOMTreeNode[]>([])
 
@@ -252,7 +266,7 @@ async function searchMaterials(keyword: string) {
   if (!keyword) return
   materialLoading.value = true
   try {
-    const res = await searchMaterialsApi(keyword, 1, 50)
+    const res = await searchMaterialsApi(keyword, { page: 1, page_size: 50 })
     if (res.code === 0) {
       materialOptions.value = res.data.list
     }
@@ -352,6 +366,43 @@ async function handleConvert() {
 // 保存（目前是即时保存，这里可以留作后续批量保存用）
 function handleSave() {
   ElMessage.success('BOM已自动保存')
+}
+
+// 导出BOM
+function handleExport() {
+  exportBOM(bomId.value)
+  ElMessage.success('正在导出BOM...')
+}
+
+// 导入前检查
+function handleImportBefore(file: File) {
+  const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
+  if (!isExcel) {
+    ElMessage.error('只能上传Excel文件')
+    return false
+  }
+  return true
+}
+
+// 导入BOM
+async function handleImport(options: { file: File }) {
+  try {
+    const res = await importBOM(bomId.value, options.file)
+    if (res.code === 0) {
+      const result = res.data
+      if (result.fail_count > 0) {
+        ElMessage.warning(`导入完成：成功${result.success_count}条，失败${result.fail_count}条`)
+        if (result.errors && result.errors.length > 0) {
+          console.warn('导入错误:', result.errors)
+        }
+      } else {
+        ElMessage.success(`导入成功：共${result.success_count}条`)
+      }
+      fetchBOMTree()
+    }
+  } catch (error: any) {
+    ElMessage.error(error.message || '导入失败')
+  }
 }
 
 // 提交子物料

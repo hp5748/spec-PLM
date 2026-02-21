@@ -14,7 +14,7 @@
           <el-input v-model="searchForm.username" placeholder="请输入用户名" clearable />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="请选择" clearable>
+          <el-select v-model="searchForm.status" placeholder="请选择状态" clearable>
             <el-option label="正常" value="active" />
             <el-option label="停用" value="inactive" />
             <el-option label="锁定" value="locked" />
