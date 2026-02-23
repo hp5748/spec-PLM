@@ -83,7 +83,13 @@ func (r *Repository) ListDefinitions(ctx context.Context, query *model.WorkflowD
 		db = db.Where("status = ?", query.Status)
 	}
 	if query.Keyword != "" {
-		db = db.Where("name LIKE ? OR code LIKE ?", "%"+query.Keyword+"%", "%"+query.Keyword+"%")
+		// 扩展关键字查询范围：名称、编码、描述、配置
+		keyword := "%" + query.Keyword + "%"
+		db = db.Where("name LIKE ? OR code LIKE ? OR description LIKE ? OR config LIKE ?", keyword, keyword, keyword, keyword)
+	}
+	if query.NodeName != "" {
+		// 按节点名称筛选（JSON字段模糊匹配）
+		db = db.Where("config LIKE ?", "%\"name\":\""+query.NodeName+"\"%")
 	}
 
 	if err := db.Count(&total).Error; err != nil {
@@ -258,6 +264,11 @@ func (r *Repository) GetPendingInstancesByUser(ctx context.Context, userID uint,
 		db = db.Where("workflow_instances.status = ?", query.Status)
 	} else {
 		db = db.Where("workflow_instances.status = ?", "PENDING")
+	}
+
+	// 支持关键字筛选（标题）
+	if query.Keyword != "" {
+		db = db.Where("workflow_instances.title LIKE ?", "%"+query.Keyword+"%")
 	}
 
 	if err := db.Count(&total).Error; err != nil {

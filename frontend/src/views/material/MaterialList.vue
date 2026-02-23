@@ -205,8 +205,20 @@
         <el-form-item label="PART名称">
           <el-input :value="currentMaterial?.item_name" disabled />
         </el-form-item>
-        <el-form-item label="审批流程">
-          <el-input :value="workflowDefinition?.name" disabled />
+        <el-form-item label="审批流程" prop="definition_id">
+          <el-select v-model="workflowForm.definition_id" placeholder="请选择审批流程" style="width: 100%">
+            <el-option
+              v-for="def in workflowDefinitionList"
+              :key="def.id"
+              :label="def.name"
+              :value="def.id"
+            >
+              <div style="display: flex; justify-content: space-between;">
+                <span>{{ def.name }}</span>
+                <span style="color: #909399; font-size: 12px;">{{ def.description }}</span>
+              </div>
+            </el-option>
+          </el-select>
         </el-form-item>
         <el-form-item label="流程标题" prop="title">
           <el-input v-model="workflowForm.title" placeholder="请输入流程标题" />
@@ -239,7 +251,7 @@ import {
 } from '@/api/material'
 import { getAllActiveSchemas, type AttributeSchema } from '@/api/attribute'
 import AttributeForm from '@/components/AttributeForm.vue'
-import { getActiveDefinition, initiateWorkflow, type WorkflowDefinition } from '@/api/workflow'
+import { getDefinitionList, initiateWorkflow, type WorkflowDefinition } from '@/api/workflow'
 
 defineOptions({
   name: 'PartList',
@@ -267,13 +279,15 @@ const allSchemas = ref<AttributeSchema[]>([])
 const workflowVisible = ref(false)
 const workflowSubmitting = ref(false)
 const workflowFormRef = ref<FormInstance>()
-const workflowDefinition = ref<WorkflowDefinition | null>(null)
+const workflowDefinitionList = ref<WorkflowDefinition[]>([])
 const workflowForm = reactive({
+  definition_id: null as number | null,
   title: '',
   comment: '',
 })
 
 const workflowRules: FormRules = {
+  definition_id: [{ required: true, message: '请选择审批流程', trigger: 'change' }],
   title: [{ required: true, message: '请输入流程标题', trigger: 'blur' }],
 }
 
@@ -580,16 +594,22 @@ async function handleInitiateWorkflow(row: Material) {
       currentMaterial.value = res.data
     }
 
-    // 获取物料审批流程定义
-    const defRes = await getActiveDefinition('MATERIAL_APPROVAL')
-    if (defRes.code === 0) {
-      workflowDefinition.value = defRes.data
+    // 获取物料审批流程定义列表
+    const defRes = await getDefinitionList({
+      type: 'MATERIAL_APPROVAL',
+      status: 'RELEASED',
+      page: 1,
+      page_size: 100,
+    })
+    if (defRes.code === 0 && defRes.data.list.length > 0) {
+      workflowDefinitionList.value = defRes.data.list
     } else {
       ElMessage.error('未找到PART审批流程，请先配置流程')
       return
     }
 
-    // 设置默认标题
+    // 设置默认值
+    workflowForm.definition_id = null
     workflowForm.title = `PART审批 - ${row.item_name}`
     workflowForm.comment = ''
     workflowVisible.value = true
@@ -602,12 +622,12 @@ async function handleSubmitWorkflow() {
   const valid = await workflowFormRef.value?.validate()
   if (!valid) return
 
-  if (!workflowDefinition.value || !currentMaterial.value) return
+  if (!workflowForm.definition_id || !currentMaterial.value) return
 
   workflowSubmitting.value = true
   try {
     await initiateWorkflow({
-      definition_id: workflowDefinition.value.id,
+      definition_id: workflowForm.definition_id,
       business_type: 'MATERIAL',
       business_id: currentMaterial.value.id,
       title: workflowForm.title,

@@ -31,8 +31,11 @@ type WorkflowInstance struct {
 	Title         string         `gorm:"size:200" json:"title"`
 	Status        string         `gorm:"size:20;default:DRAFT;index" json:"status"` // DRAFT, PENDING, APPROVED, REJECTED, CANCELLED
 	InitiatorID   uint           `gorm:"not null;index" json:"initiator_id"`
-	CurrentNode   string         `gorm:"size:100" json:"current_node"`
-	Comment       string         `json:"comment"` // 发起时的意见
+	CurrentNode   string         `gorm:"size:100" json:"current_node"`                     // 当前节点名称
+	CurrentNodeID string         `gorm:"size:50" json:"current_node_id"`                   // 当前节点ID
+	NodePath      string         `gorm:"type:text" json:"node_path"`                       // 经过的节点路径（JSON数组）
+	ApprovedNodes string         `gorm:"type:text" json:"approved_nodes"`                  // 已审批节点列表（JSON数组）
+	Comment       string         `json:"comment"`                                          // 发起时的意见
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
 	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
@@ -47,6 +50,8 @@ type WorkflowHistory struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	InstanceID   uint      `gorm:"not null;index" json:"instance_id"`
 	NodeName     string    `gorm:"size:100" json:"node_name"`
+	FromNodeID   string    `gorm:"size:50" json:"from_node_id"`   // 源节点ID
+	ToNodeID     string    `gorm:"size:50" json:"to_node_id"`     // 目标节点ID
 	Action       string    `gorm:"size:20;not null" json:"action"` // SUBMIT, APPROVE, REJECT, TRANSFER, CANCEL, WITHDRAW
 	OperatorID   uint      `gorm:"not null;index" json:"operator_id"`
 	OperatorName string    `gorm:"size:50" json:"operator_name"`
@@ -120,6 +125,7 @@ type TodoListQuery struct {
 	PageSize int    `form:"page_size"`
 	Type     string `form:"type"`   // 业务类型筛选
 	Status   string `form:"status"`
+	Keyword  string `form:"keyword"` // 关键字筛选
 }
 
 // WorkflowDefinitionListQuery 流程定义列表查询参数
@@ -129,14 +135,17 @@ type WorkflowDefinitionListQuery struct {
 	Type     string `form:"type"`
 	Status   string `form:"status"`
 	Keyword  string `form:"keyword"`
+	NodeName string `form:"node_name"` // 按节点名称筛选
 }
 
 // WorkflowInstanceResponse 流程实例响应
 type WorkflowInstanceResponse struct {
 	WorkflowInstance
-	BusinessName   string `json:"business_name"`   // 业务对象名称
-	BusinessCode   string `json:"business_code"`   // 业务对象编码
-	BusinessStatus string `json:"business_status"` // 业务对象状态
+	BusinessName   string   `json:"business_name"`   // 业务对象名称
+	BusinessCode   string   `json:"business_code"`   // 业务对象编码
+	BusinessStatus string   `json:"business_status"` // 业务对象状态
+	NodePathList   []string `json:"node_path_list"`  // 解析后的节点路径
+	ApprovedList   []string `json:"approved_list"`   // 解析后的已审批节点
 }
 
 // TodoItemResponse 待办事项响应

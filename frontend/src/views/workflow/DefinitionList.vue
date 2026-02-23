@@ -3,8 +3,8 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>我的待办</span>
-          <el-tag type="warning" size="large">待处理 {{ pagination.total }} 项</el-tag>
+          <span>流程查询</span>
+          <el-tag type="info" size="large">共 {{ pagination.total }} 条</el-tag>
         </div>
       </template>
 
@@ -43,21 +43,15 @@
       <el-table :data="tableData" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="title" label="流程标题" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="business_type" label="业务类型" width="120">
+        <el-table-column prop="business_type" label="业务类型" width="100">
           <template #default="{ row }">
             <el-tag :type="getBusinessTypeTag(row.business_type)">
               {{ getBusinessTypeText(row.business_type) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="business_code" label="业务编码" width="150">
-          <template #default="{ row }">
-            <el-button type="primary" link @click="handleViewBusiness(row)">
-              {{ row.business_code }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column prop="business_name" label="业务名称" width="200" show-overflow-tooltip />
+        <el-table-column prop="business_code" label="业务编码" width="150" show-overflow-tooltip />
+        <el-table-column prop="business_name" label="业务名称" width="180" show-overflow-tooltip />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
@@ -74,16 +68,15 @@
             <span>{{ getCurrentAssignee(row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="initiator" label="发起人" width="120">
+        <el-table-column prop="initiator" label="发起人" width="100">
           <template #default="{ row }">
             {{ row.initiator?.real_name || row.initiator?.username || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="发起时间" width="180" />
-        <el-table-column label="操作" fixed="right" width="200">
+        <el-table-column prop="created_at" label="发起时间" width="170" />
+        <el-table-column label="操作" fixed="right" width="100">
           <template #default="{ row }">
             <el-button type="primary" link @click="handleView(row)">查看</el-button>
-            <el-button type="success" link @click="handleApprove(row)">审批</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -106,11 +99,7 @@
       <el-descriptions :column="2" border>
         <el-descriptions-item label="流程标题" :span="2">{{ currentInstance?.title }}</el-descriptions-item>
         <el-descriptions-item label="业务类型">{{ getBusinessTypeText(currentInstance?.business_type) }}</el-descriptions-item>
-        <el-descriptions-item label="业务编码">
-          <el-button type="primary" link @click="handleViewBusiness(currentInstance)">
-            {{ currentInstance?.business_code }}
-          </el-button>
-        </el-descriptions-item>
+        <el-descriptions-item label="业务编码">{{ currentInstance?.business_code }}</el-descriptions-item>
         <el-descriptions-item label="业务名称" :span="2">{{ currentInstance?.business_name }}</el-descriptions-item>
         <el-descriptions-item label="业务状态">
           <el-tag :type="getBusinessStatusType(currentInstance?.business_status)">
@@ -152,55 +141,7 @@
       <el-empty v-else description="暂无审批历史" />
 
       <template #footer>
-        <el-button v-if="currentInstance?.status === 'PENDING'" type="success" @click="handleApproveFromDetail">审批</el-button>
         <el-button @click="detailVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 审批对话框 -->
-    <el-dialog v-model="approveVisible" title="审批操作" width="500">
-      <el-form ref="approveFormRef" :model="approveForm" :rules="approveRules" label-width="80px">
-        <el-form-item label="审批结果">
-          <el-radio-group v-model="approveForm.result">
-            <el-radio value="approve">同意</el-radio>
-            <el-radio value="reject">驳回</el-radio>
-            <el-radio value="transfer">转交</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item
-          v-if="approveForm.result === 'reject'"
-          label="驳回原因"
-          prop="comment"
-        >
-          <el-input
-            v-model="approveForm.comment"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入驳回原因"
-          />
-        </el-form-item>
-        <el-form-item v-else-if="approveForm.result === 'transfer'" label="转交用户" prop="target_user_id">
-          <el-select v-model="approveForm.target_user_id" placeholder="请选择转交用户" style="width: 100%">
-            <el-option
-              v-for="user in userList"
-              :key="user.id"
-              :label="user.real_name || user.username"
-              :value="user.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-else label="审批意见">
-          <el-input
-            v-model="approveForm.comment"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入审批意见（可选）"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="approveVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmitApprove" :loading="submitting">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -208,35 +149,24 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
-  getMyTodos,
+  getInstanceList,
   getInstance,
   getHistories,
-  approveWorkflow,
-  rejectWorkflow,
-  transferWorkflow,
-  type TodoItemResponse,
+  type WorkflowInstanceResponse,
   type WorkflowHistory,
+  type WorkflowDefinition,
 } from '@/api/workflow'
-import { getUserList, type User } from '@/api/user'
-
-const router = useRouter()
 
 defineOptions({
-  name: 'TodoList',
+  name: 'WorkflowQueryList',
 })
 
 const loading = ref(false)
-const submitting = ref(false)
-const tableData = ref<TodoItemResponse[]>([])
+const tableData = ref<WorkflowInstanceResponse[]>([])
 const detailVisible = ref(false)
-const approveVisible = ref(false)
-const currentInstance = ref<TodoItemResponse | null>(null)
+const currentInstance = ref<WorkflowInstanceResponse | null>(null)
 const histories = ref<WorkflowHistory[]>([])
-const userList = ref<User[]>([])
-const approveFormRef = ref<FormInstance>()
 
 const searchForm = reactive({
   type: '',
@@ -250,21 +180,6 @@ const pagination = reactive({
   pageSize: 20,
   total: 0,
 })
-
-const approveForm = reactive({
-  result: 'approve',
-  comment: '',
-  target_user_id: null as number | null,
-})
-
-const approveRules: FormRules = {
-  comment: [
-    { required: true, message: '请输入驳回原因', trigger: 'blur' },
-  ],
-  target_user_id: [
-    { required: true, message: '请选择转交用户', trigger: 'change' },
-  ],
-}
 
 // 所有审批节点名称（用于筛选）
 const allApprovalNodes = computed<string[]>(() => {
@@ -288,30 +203,33 @@ const allApprovalNodes = computed<string[]>(() => {
 
 onMounted(() => {
   fetchData()
-  loadUserList()
 })
-
-async function loadUserList() {
-  try {
-    const res = await getUserList({ page: 1, page_size: 1000 })
-    if (res.code === 0) {
-      userList.value = res.data.list
-    }
-  } catch (error) {
-    console.error(error)
-  }
-}
 
 async function fetchData() {
   loading.value = true
   try {
-    const res = await getMyTodos({
+    const res = await getInstanceList({
       page: pagination.page,
       page_size: pagination.pageSize,
-      ...searchForm,
+      type: searchForm.type,
+      status: searchForm.status,
+      keyword: searchForm.keyword,
     })
     if (res.code === 0) {
-      tableData.value = res.data.list
+      let list = res.data.list
+      // 前端按节点名称筛选
+      if (searchForm.node_name) {
+        list = list.filter((inst: WorkflowInstanceResponse) => {
+          if (!inst.definition?.config) return false
+          try {
+            const config = JSON.parse(inst.definition.config)
+            return config.nodes?.some((n: any) => n.type === 'approval' && n.name === searchForm.node_name)
+          } catch {
+            return false
+          }
+        })
+      }
+      tableData.value = list
       pagination.total = res.data.total
     }
   } catch (error) {
@@ -335,7 +253,7 @@ function handleReset() {
   fetchData()
 }
 
-async function handleView(row: TodoItemResponse) {
+async function handleView(row: WorkflowInstanceResponse) {
   try {
     const res = await getInstance(row.id)
     if (res.code === 0) {
@@ -352,79 +270,29 @@ async function handleView(row: TodoItemResponse) {
   }
 }
 
-// 跳转到业务对象详情
-function handleViewBusiness(row: TodoItemResponse | null) {
-  if (!row) return
-
-  detailVisible.value = false
-
-  switch (row.business_type) {
-    case 'MATERIAL':
-      router.push('/part/query')
-      break
-    case 'DOCUMENT':
-      router.push('/document/query')
-      break
-    case 'BOM':
-      router.push('/bom/list')
-      break
+// 获取当前处理人
+function getCurrentAssignee(row: WorkflowInstanceResponse | null): string {
+  if (!row?.definition?.config || !row.current_node_id) {
+    return '-'
   }
-}
 
-async function handleApprove(row: TodoItemResponse) {
   try {
-    const res = await getInstance(row.id)
-    if (res.code === 0) {
-      currentInstance.value = res.data
-      approveForm.result = 'approve'
-      approveForm.comment = ''
-      approveForm.target_user_id = null
-      approveVisible.value = true
+    const config = JSON.parse(row.definition.config)
+    const currentNode = config.nodes?.find((n: any) => n.id === row.current_node_id)
+    if (!currentNode?.assignee) {
+      return '-'
     }
-  } catch (error) {
-    console.error(error)
-  }
-}
 
-// 从详情对话框发起审批
-function handleApproveFromDetail() {
-  if (!currentInstance.value) return
-  detailVisible.value = false
-  approveForm.result = 'approve'
-  approveForm.comment = ''
-  approveForm.target_user_id = null
-  approveVisible.value = true
-}
-
-async function handleSubmitApprove() {
-  if (approveForm.result === 'reject' || approveForm.result === 'transfer') {
-    const valid = await approveFormRef.value?.validate()
-    if (!valid) return
-  }
-
-  if (!currentInstance.value) return
-
-  submitting.value = true
-  try {
-    if (approveForm.result === 'approve') {
-      await approveWorkflow(currentInstance.value.id, { comment: approveForm.comment })
-      ElMessage.success('审批通过')
-    } else if (approveForm.result === 'reject') {
-      await rejectWorkflow(currentInstance.value.id, { comment: approveForm.comment })
-      ElMessage.success('已驳回')
-    } else if (approveForm.result === 'transfer') {
-      await transferWorkflow(currentInstance.value.id, {
-        target_user_id: approveForm.target_user_id!,
-        comment: approveForm.comment,
-      })
-      ElMessage.success('已转交')
+    const assignee = currentNode.assignee
+    const typeMap: Record<string, string> = {
+      role: '角色',
+      department: '部门',
+      user: '用户',
+      initiator: '发起人',
     }
-    approveVisible.value = false
-    fetchData()
-  } catch (error: any) {
-    ElMessage.error(error.message || '操作失败')
-  } finally {
-    submitting.value = false
+    return `${typeMap[assignee.type] || assignee.type}: ${assignee.value}`
+  } catch {
+    return '-'
   }
 }
 
@@ -512,32 +380,6 @@ function getActionText(action: string) {
     WITHDRAW: '撤回',
   }
   return map[action] || action
-}
-
-// 获取当前处理人
-function getCurrentAssignee(row: TodoItemResponse): string {
-  if (!row.definition?.config || !row.current_node_id) {
-    return '-'
-  }
-
-  try {
-    const config = JSON.parse(row.definition.config)
-    const currentNode = config.nodes?.find((n: any) => n.id === row.current_node_id)
-    if (!currentNode?.assignee) {
-      return '-'
-    }
-
-    const assignee = currentNode.assignee
-    const typeMap: Record<string, string> = {
-      role: '角色',
-      department: '部门',
-      user: '用户',
-      initiator: '发起人',
-    }
-    return `${typeMap[assignee.type] || assignee.type}: ${assignee.value}`
-  } catch {
-    return '-'
-  }
 }
 </script>
 

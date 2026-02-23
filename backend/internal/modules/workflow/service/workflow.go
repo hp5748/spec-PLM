@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -12,12 +13,16 @@ import (
 )
 
 type Service struct {
-	repo *repository.Repository
-	db   *gorm.DB
+	repo   *repository.Repository
+	db     *gorm.DB
+	engine *WorkflowEngine
 }
 
 func NewService(repo *repository.Repository) *Service {
-	return &Service{repo: repo}
+	return &Service{
+		repo:   repo,
+		engine: NewWorkflowEngine(),
+	}
 }
 
 // SetDB 设置数据库连接（用于事务）
@@ -184,15 +189,36 @@ func (s *Service) InitiateWorkflow(ctx context.Context, req *model.InitiateWorkf
 		return nil, err
 	}
 
+	// 解析流程配置
+	config, err := s.engine.ParseConfig(def.Config)
+	if err != nil {
+		return nil, fmt.Errorf("流程配置解析失败: %w", err)
+	}
+
+	// 构建流程上下文
+	workflowContext := s.buildWorkflowContext(ctx, req.BusinessType, req.BusinessID, initiatorID)
+
+	// 获取第一个审批节点
+	firstNode, err := s.engine.GetFirstApprovalNode(config, workflowContext)
+	if err != nil {
+		return nil, err
+	}
+
+	// 构建节点路径
+	nodePath, _ := json.Marshal([]string{"start", firstNode.ID})
+
 	instance := &model.WorkflowInstance{
-		DefinitionID: req.DefinitionID,
-		BusinessType: req.BusinessType,
-		BusinessID:   req.BusinessID,
-		Title:        req.Title,
-		Status:       "PENDING",
-		InitiatorID:  initiatorID,
-		CurrentNode:  "审批",
-		Comment:      req.Comment,
+		DefinitionID:  req.DefinitionID,
+		BusinessType:  req.BusinessType,
+		BusinessID:    req.BusinessID,
+		Title:         req.Title,
+		Status:        "PENDING",
+		InitiatorID:   initiatorID,
+		CurrentNode:   firstNode.Name,
+		CurrentNodeID: firstNode.ID,
+		NodePath:      string(nodePath),
+		ApprovedNodes: "[]",
+		Comment:       req.Comment,
 	}
 
 	if err := s.repo.CreateInstance(ctx, instance); err != nil {
@@ -208,6 +234,8 @@ func (s *Service) InitiateWorkflow(ctx context.Context, req *model.InitiateWorkf
 	history := &model.WorkflowHistory{
 		InstanceID:   instance.ID,
 		NodeName:     "发起",
+		FromNodeID:   "start",
+		ToNodeID:     firstNode.ID,
 		Action:       "SUBMIT",
 		OperatorID:   initiatorID,
 		OperatorName: s.getUserName(ctx, initiatorID),
@@ -268,22 +296,99 @@ func (s *Service) Approve(ctx context.Context, instanceID uint, operatorID uint,
 		return nil, errors.New("当前流程状态不允许审批")
 	}
 
-	// 更新流程状态
-	instance.Status = "APPROVED"
-	instance.CurrentNode = "已通过"
-	if err := s.repo.UpdateInstance(ctx, instance); err != nil {
+	// 获取流程定义
+	def, err := s.repo.GetDefinitionByID(ctx, instance.DefinitionID)
+	if err != nil {
+		return nil, errors.New("流程定义不存在")
+	}
+
+	// 解析流程配置
+	config, err := s.engine.ParseConfig(def.Config)
+	if err != nil {
+		return nil, fmt.Errorf("流程配置解析失败: %w", err)
+	}
+
+	// 获取当前节点
+	currentNode := s.engine.GetNodeByID(config, instance.CurrentNodeID)
+	if currentNode == nil {
+		return nil, errors.New("当前节点不存在")
+	}
+
+	// 记录已审批节点
+	var approvedNodes []string
+	if instance.ApprovedNodes != "" {
+		json.Unmarshal([]byte(instance.ApprovedNodes), &approvedNodes)
+	}
+	approvedNodes = append(approvedNodes, currentNode.ID)
+	approvedNodesJSON, _ := json.Marshal(approvedNodes)
+
+	// 获取下一个节点
+	workflowContext := s.buildWorkflowContext(ctx, instance.BusinessType, instance.BusinessID, instance.InitiatorID)
+	nextNodes, err := s.engine.GetNextNodes(config, currentNode.ID, workflowContext)
+	if err != nil {
 		return nil, err
 	}
 
-	// 更新业务对象状态为已发布
-	if err := s.updateBusinessStatus(ctx, instance.BusinessType, instance.BusinessID, "RELEASED"); err != nil {
+	// 判断流程是否结束
+	isEnd := len(nextNodes) == 0
+	if !isEnd && len(nextNodes) == 1 && nextNodes[0].Type == model.NodeTypeEnd {
+		isEnd = true
+	}
+
+	var fromNodeID, toNodeID string
+	fromNodeID = currentNode.ID
+
+	if isEnd {
+		// 流程结束
+		instance.Status = "APPROVED"
+		instance.CurrentNode = "已通过"
+		instance.CurrentNodeID = "end"
+		instance.ApprovedNodes = string(approvedNodesJSON)
+		toNodeID = "end"
+
+		// 更新业务对象状态为已发布
+		if err := s.updateBusinessStatus(ctx, instance.BusinessType, instance.BusinessID, "RELEASED"); err != nil {
+			return nil, err
+		}
+	} else {
+		// 流转到下一个审批节点
+		var nextApprovalNode *model.NodeConfig
+		for i := range nextNodes {
+			if nextNodes[i].Type == model.NodeTypeApproval {
+				nextApprovalNode = &nextNodes[i]
+				break
+			}
+		}
+
+		if nextApprovalNode == nil {
+			return nil, errors.New("未找到下一个审批节点")
+		}
+
+		// 更新节点路径
+		var nodePath []string
+		if instance.NodePath != "" {
+			json.Unmarshal([]byte(instance.NodePath), &nodePath)
+		}
+		nodePath = append(nodePath, nextApprovalNode.ID)
+		nodePathJSON, _ := json.Marshal(nodePath)
+
+		instance.CurrentNode = nextApprovalNode.Name
+		instance.CurrentNodeID = nextApprovalNode.ID
+		instance.NodePath = string(nodePathJSON)
+		instance.ApprovedNodes = string(approvedNodesJSON)
+		toNodeID = nextApprovalNode.ID
+	}
+
+	if err := s.repo.UpdateInstance(ctx, instance); err != nil {
 		return nil, err
 	}
 
 	// 创建流程历史
 	history := &model.WorkflowHistory{
 		InstanceID:   instanceID,
-		NodeName:     "审批",
+		NodeName:     currentNode.Name,
+		FromNodeID:   fromNodeID,
+		ToNodeID:     toNodeID,
 		Action:       "APPROVE",
 		OperatorID:   operatorID,
 		OperatorName: s.getUserName(ctx, operatorID),
@@ -305,9 +410,15 @@ func (s *Service) Reject(ctx context.Context, instanceID uint, operatorID uint, 
 		return nil, errors.New("当前流程状态不允许审批")
 	}
 
+	currentNodeID := instance.CurrentNodeID
+	if currentNodeID == "" {
+		currentNodeID = "approval"
+	}
+
 	// 更新流程状态
 	instance.Status = "REJECTED"
 	instance.CurrentNode = "已驳回"
+	instance.CurrentNodeID = "end"
 	if err := s.repo.UpdateInstance(ctx, instance); err != nil {
 		return nil, err
 	}
@@ -320,7 +431,9 @@ func (s *Service) Reject(ctx context.Context, instanceID uint, operatorID uint, 
 	// 创建流程历史
 	history := &model.WorkflowHistory{
 		InstanceID:   instanceID,
-		NodeName:     "审批",
+		NodeName:     instance.CurrentNode,
+		FromNodeID:   currentNodeID,
+		ToNodeID:     "end",
 		Action:       "REJECT",
 		OperatorID:   operatorID,
 		OperatorName: s.getUserName(ctx, operatorID),
@@ -342,10 +455,17 @@ func (s *Service) Transfer(ctx context.Context, instanceID uint, operatorID uint
 		return nil, errors.New("当前流程状态不允许转交")
 	}
 
+	currentNodeID := instance.CurrentNodeID
+	if currentNodeID == "" {
+		currentNodeID = "approval"
+	}
+
 	// 创建流程历史
 	history := &model.WorkflowHistory{
 		InstanceID:   instanceID,
-		NodeName:     "审批",
+		NodeName:     instance.CurrentNode,
+		FromNodeID:   currentNodeID,
+		ToNodeID:     currentNodeID,
 		Action:       "TRANSFER",
 		OperatorID:   operatorID,
 		OperatorName: s.getUserName(ctx, operatorID),
@@ -372,9 +492,15 @@ func (s *Service) Withdraw(ctx context.Context, instanceID uint, operatorID uint
 		return nil, errors.New("只有发起人可以撤回流程")
 	}
 
+	currentNodeID := instance.CurrentNodeID
+	if currentNodeID == "" {
+		currentNodeID = "approval"
+	}
+
 	// 更新流程状态
 	instance.Status = "CANCELLED"
 	instance.CurrentNode = "已撤回"
+	instance.CurrentNodeID = "end"
 	if err := s.repo.UpdateInstance(ctx, instance); err != nil {
 		return nil, err
 	}
@@ -387,7 +513,9 @@ func (s *Service) Withdraw(ctx context.Context, instanceID uint, operatorID uint
 	// 创建流程历史
 	history := &model.WorkflowHistory{
 		InstanceID:   instanceID,
-		NodeName:     "审批",
+		NodeName:     instance.CurrentNode,
+		FromNodeID:   currentNodeID,
+		ToNodeID:     "end",
 		Action:       "WITHDRAW",
 		OperatorID:   operatorID,
 		OperatorName: s.getUserName(ctx, operatorID),
@@ -460,4 +588,72 @@ func (s *Service) getUserName(ctx context.Context, userID uint) string {
 		return user.RealName
 	}
 	return user.Username
+}
+
+// buildWorkflowContext 构建流程上下文
+func (s *Service) buildWorkflowContext(ctx context.Context, businessType string, businessID uint, initiatorID uint) *model.WorkflowContext {
+	context := &model.WorkflowContext{
+		InitiatorID:  initiatorID,
+		BusinessType: businessType,
+		BusinessID:   businessID,
+		Data:         make(map[string]interface{}),
+	}
+
+	// 获取业务对象数据
+	context.Data = s.getBusinessData(ctx, businessType, businessID)
+
+	// 获取发起人信息
+	var user model.User
+	if s.db.WithContext(ctx).First(&user, initiatorID).Error == nil {
+		context.Initiator = map[string]interface{}{
+			"id":       user.ID,
+			"username": user.Username,
+		}
+	}
+
+	return context
+}
+
+// getBusinessData 获取业务对象数据
+func (s *Service) getBusinessData(ctx context.Context, businessType string, businessID uint) map[string]interface{} {
+	data := make(map[string]interface{})
+
+	switch businessType {
+	case "MATERIAL":
+		var material struct {
+			ItemType string `gorm:"column:item_type"`
+			Status   string `gorm:"column:status"`
+		}
+		if s.db.WithContext(ctx).Table("materials").
+			Select("item_type, status").
+			Where("id = ?", businessID).
+			First(&material).Error == nil {
+			data["item_type"] = material.ItemType
+			data["status"] = material.Status
+		}
+	case "DOCUMENT":
+		var doc struct {
+			DocType string `gorm:"column:doc_type"`
+			Status  string `gorm:"column:status"`
+		}
+		if s.db.WithContext(ctx).Table("documents").
+			Select("doc_type, status").
+			Where("id = ?", businessID).
+			First(&doc).Error == nil {
+			data["doc_type"] = doc.DocType
+			data["status"] = doc.Status
+		}
+	case "BOM":
+		var bom struct {
+			Status string `gorm:"column:status"`
+		}
+		if s.db.WithContext(ctx).Table("bom_views").
+			Select("status").
+			Where("id = ?", businessID).
+			First(&bom).Error == nil {
+			data["status"] = bom.Status
+		}
+	}
+
+	return data
 }

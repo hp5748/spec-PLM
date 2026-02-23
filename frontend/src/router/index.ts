@@ -162,6 +162,12 @@ export const privateRoutes: RouteRecordRaw[] = [
         component: () => import('@/views/workflow/TodoList.vue'),
         meta: { title: '我的待办', permissions: ['workflow:approve'] },
       },
+      {
+        path: 'definitions',
+        name: 'WorkflowDefinitions',
+        component: () => import('@/views/workflow/DefinitionList.vue'),
+        meta: { title: '流程查询', permissions: ['workflow:view'] },
+      },
     ],
   },
 ]

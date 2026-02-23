@@ -1,6 +1,41 @@
 import { request } from '@/utils/request'
 import type { ApiResponse, PageData, PageParams } from '@/types/api'
 
+// ==================== 流程配置类型（多节点分支）====================
+
+// 审批人配置
+export interface AssigneeConfig {
+  type: 'role' | 'department' | 'user' | 'initiator'
+  value: string
+}
+
+// 节点配置
+export interface NodeConfig {
+  id: string
+  name: string
+  type: 'start' | 'approval' | 'condition' | 'end'
+  assignee?: AssigneeConfig
+  condition?: string
+}
+
+// 边配置
+export interface EdgeConfig {
+  id: string
+  source: string
+  target: string
+  label?: string
+  condition?: string
+}
+
+// 流程配置
+export interface WorkflowConfig {
+  version: string
+  nodes: NodeConfig[]
+  edges: EdgeConfig[]
+}
+
+// ==================== 流程定义和实例类型 ====================
+
 // 流程定义类型
 export interface WorkflowDefinition {
   id: number
@@ -26,6 +61,9 @@ export interface WorkflowInstance {
   status: string
   initiator_id: number
   current_node: string
+  current_node_id: string
+  node_path: string
+  approved_nodes: string
   comment: string
   created_at: string
   updated_at: string
@@ -42,6 +80,8 @@ export interface WorkflowInstanceResponse extends WorkflowInstance {
   business_name: string
   business_code: string
   business_status: string
+  node_path_list: string[]
+  approved_list: string[]
 }
 
 // 流程历史类型
@@ -49,6 +89,8 @@ export interface WorkflowHistory {
   id: number
   instance_id: number
   node_name: string
+  from_node_id: string
+  to_node_id: string
   action: string
   operator_id: number
   operator_name: string
@@ -64,6 +106,7 @@ export interface WorkflowHistory {
 // 待办事项响应
 export interface TodoItemResponse extends WorkflowInstanceResponse {
   pending_action: string
+  definition?: WorkflowDefinition
 }
 
 // 流程定义列表查询参数
@@ -71,6 +114,7 @@ export interface DefinitionListParams extends PageParams {
   type?: string
   status?: string
   keyword?: string
+  node_name?: string
 }
 
 // 流程实例列表查询参数
@@ -84,6 +128,7 @@ export interface InstanceListParams extends PageParams {
 export interface TodoListParams extends PageParams {
   type?: string    // 业务类型筛选
   status?: string
+  keyword?: string
 }
 
 // 创建流程定义请求

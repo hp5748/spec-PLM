@@ -362,7 +362,7 @@ func (s *Service) executeJavaScript(script *model.Script, businessType string, b
 }
 
 // injectDatabaseAPI 注入数据库查询API
-func (s *Service) injectDatabaseAPI(vm *goja.Goja) {
+func (s *Service) injectDatabaseAPI(vm *goja.Runtime) {
 	// dbQuery - 执行SQL查询
 	vm.Set("dbQuery", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
@@ -451,7 +451,7 @@ func (s *Service) injectDatabaseAPI(vm *goja.Goja) {
 }
 
 // injectUtilityAPI 注入工具函数API
-func (s *Service) injectUtilityAPI(vm *goja.Goja) {
+func (s *Service) injectUtilityAPI(vm *goja.Runtime) {
 	// JSON解析
 	vm.Set("parseJSON", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
